@@ -17,9 +17,12 @@ func NewController(port string) {
 			MaxAge:       24 * time.Hour,
 		}))
 
+	mongo := repositories.MongoInit()
 	db := repositories.MySQLInit()
+
 	AuthController(r, db)
 	NewBoardController(r, db)
+	NewGameController(r, mongo, db)
 
 	err := r.Run(port)
 	if err != nil {

@@ -19,6 +19,7 @@ func MySQLInit() *gorm.DB {
 
 	db.AutoMigrate(&entities.User{})
 	db.AutoMigrate(&entities.Board{})
+	db.AutoMigrate(&entities.Game{})
 
 	return db
 }
