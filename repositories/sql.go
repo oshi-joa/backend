@@ -18,6 +18,7 @@ func MySQLInit() *gorm.DB {
 	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
 
 	db.AutoMigrate(&entities.User{})
+	db.AutoMigrate(&entities.Board{})
 
 	return db
 }

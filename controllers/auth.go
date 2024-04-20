@@ -10,7 +10,7 @@ func AuthController(r *gin.Engine, db *gorm.DB) {
 	r.POST("/signup", func(c *gin.Context) {
 		services.SignUp(c, db)
 	})
-	r.GET("/login", func(c *gin.Context) {
+	r.POST("/login", func(c *gin.Context) {
 		services.Login(c, db)
 	})
 	r.GET("/logout", func(c *gin.Context) {
