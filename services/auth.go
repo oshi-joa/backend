@@ -2,8 +2,6 @@ package services
 
 import (
 	"backend/entities"
-	"crypto/sha1"
-	"fmt"
 	"github.com/dgrijalva/jwt-go"
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
@@ -32,7 +30,10 @@ func CreateToken(userId string) (string, error) {
 
 func SignUp(c *gin.Context, db *gorm.DB) {
 	var user entities.UserDTO
-	c.BindJSON(&user)
+	if err := c.BindJSON(&user); err != nil {
+		c.JSON(400, gin.H{"error": "Invalid request body"})
+		return
+	}
 
 	// 이메일이 이미 존재하는지 확인
 	var existingUser entities.User
@@ -42,14 +43,23 @@ func SignUp(c *gin.Context, db *gorm.DB) {
 		return
 	}
 
-	hashedPassword := hashPassword(user.Password)
+	hashedPassword, err := hashPassword(user.Password)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Failed to hash password"})
+		return
+	}
 
-	// 6자리 임의의 숫자 생성
-	uuid := generateUUID()
+	// 6자리 임의의 숫자 (code) 생성
+	code := generateUUID()
+	// coupleCode 입력이 비어있으면 code로 설정
+	// 6자리 임의의 숫자 (code) 생성
+	// coupleCode 입력이 비어있으면 code로 설정
+	if user.CoupleCode == 0 {
+		user.CoupleCode = code // 여기를 수정했습니다. 직접 할당합니다.
+	}
 
 	// 사용자 정보 생성
 	upload := &entities.User{
-		Uuid:       uuid,
 		Name:       user.Name,
 		Email:      user.Email,
 		Password:   hashedPassword,
@@ -59,15 +69,13 @@ func SignUp(c *gin.Context, db *gorm.DB) {
 	db.Create(&upload)
 	c.JSON(200, gin.H{
 		"status": "success",
-		"data":   user,
+		"data":   upload,
 	})
 }
 
-func hashPassword(password string) string {
-	// 비밀번호를 해시화하여 반환
-	hashed := sha1.New()
-	hashed.Write([]byte(password))
-	return fmt.Sprintf("%x", hashed.Sum(nil))
+func hashPassword(password string) (string, error) {
+	bytes, err := bcrypt.GenerateFromPassword([]byte(password), 14)
+	return string(bytes), err
 }
 
 func generateUUID() int {
@@ -82,37 +90,66 @@ func generateUUID() int {
 
 func Login(c *gin.Context, db *gorm.DB) {
 	var loginInfo struct {
-		Email    string `json:"email" binding:"required"`
-		Password string `json:"password" binding:"required"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
 	}
+	c.BindJSON(&loginInfo)
 
-	// 클라이언트로부터 이메일과 비밀번호 받기
-	if err := c.ShouldBindJSON(&loginInfo); err != nil {
-		c.JSON(400, gin.H{"error": err.Error()})
-		return
-	}
-
-	// 이메일로 사용자 찾기
+	// 이메일을 기반으로 사용자 정보 조회
 	var user entities.User
-	result := db.Where("email = ?", loginInfo.Email).First(&user)
-	if result.Error != nil {
-		c.JSON(401, gin.H{"error": "Invalid credentials"})
+	if err := db.Where("email = ?", loginInfo.Email).First(&user).Error; gorm.ErrRecordNotFound == err {
+		c.JSON(404, gin.H{"error": "User not found"})
 		return
 	}
 
-	// 비밀번호 일치 확인
+	// 비밀번호 검증
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(loginInfo.Password)); err != nil {
-		c.JSON(401, gin.H{"error": "Invalid credentials"})
+		c.JSON(401, gin.H{"error": "Invalid password"})
 		return
 	}
 
-	// 사용자 인증이 성공하면 JWT 토큰 생성
+	// JWT 토큰 생성
 	token, err := CreateToken(user.Email)
 	if err != nil {
 		c.JSON(500, gin.H{"error": "Failed to create token"})
 		return
 	}
 
-	// 토큰을 클라이언트에게 반환
-	c.JSON(200, gin.H{"token": token})
+	// 로그인 성공 및 토큰 반환
+	c.JSON(200, gin.H{
+		"status": "success",
+		"token":  token,
+	})
+}
+
+var tokenBlacklist = make(map[string]bool)
+
+// 로그아웃 함수
+func Logout(c *gin.Context) {
+	// 클라이언트로부터 토큰을 받음
+	token := c.Request.Header.Get("Authorization")
+
+	// 토큰이 블랙리스트에 있는지 확인하고 추가함
+	tokenBlacklist[token] = true
+
+	// 로그아웃 성공 메시지 반환
+	c.JSON(200, gin.H{"message": "Successfully logged out"})
+}
+
+func CheckCode(c *gin.Context, db *gorm.DB) {
+	var loginInfo struct {
+		Email string `json:"email"`
+	}
+	c.BindJSON(&loginInfo)
+
+	var user entities.User
+	if err := db.Where("email = ?", loginInfo.Email).First(&user).Error; gorm.ErrRecordNotFound == err {
+		c.JSON(404, gin.H{"error": "User not found"})
+		return
+	}
+
+	c.JSON(200, gin.H{
+		"status": "success",
+		"code":   user.CoupleCode,
+	})
 }

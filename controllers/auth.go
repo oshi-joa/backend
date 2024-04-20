@@ -13,4 +13,10 @@ func AuthController(r *gin.Engine, db *gorm.DB) {
 	r.GET("/login", func(c *gin.Context) {
 		services.Login(c, db)
 	})
+	r.GET("/logout", func(c *gin.Context) {
+		services.Logout(c)
+	})
+	r.GET("/code", func(c *gin.Context) {
+		services.CheckCode(c, db)
+	})
 }
